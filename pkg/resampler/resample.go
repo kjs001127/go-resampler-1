@@ -2,6 +2,7 @@ package resampler
 
 import (
 	"math"
+	"math/big"
 )
 
 type Resampler struct {
@@ -56,12 +57,18 @@ func (r *Resampler) read() []float64 {
 	indexStep := int64(scale * float64(r.precision))
 	nWin := int64(len(r.filter.arr))
 
-	for int64(r.timestamp()) < r.window.right-paddingSize {
+	for {
+		timestamp := r.timestamp()
+		if i, _ := timestamp.Int64(); i >= r.window.right-paddingSize {
+			break
+		}
 
 		var sample float64
-		timestamp := r.timestamp()
-		tsFlooredTmp, timestampFrac := math.Modf(timestamp)
-		timestampFloored := int64(tsFlooredTmp)
+		timestampFloored, _ := timestamp.Int64()
+		timestampFrac, _ := new(big.Float).Sub(
+			timestamp,
+			new(big.Float).SetInt64(timestampFloored),
+		).Float64()
 
 		leftPadding := max(0, timestampFloored-r.window.left)
 		rightPadding := max(0, r.window.right-timestampFloored-1)
@@ -106,8 +113,10 @@ func (r *Resampler) read() []float64 {
 	return ret
 }
 
-func (r *Resampler) timestamp() float64 {
-	return float64(r.timeStampIdx) * float64(r.from) / float64(r.to)
+func (r *Resampler) timestamp() *big.Float {
+	idx, from, to := new(big.Float).SetInt64(r.timeStampIdx), big.NewFloat(float64(r.from)), big.NewFloat(float64(r.to))
+	tmp := new(big.Float).Mul(idx, from)
+	return new(big.Float).Quo(tmp, to)
 }
 
 func (r *Resampler) sampleRatio() float64 {
